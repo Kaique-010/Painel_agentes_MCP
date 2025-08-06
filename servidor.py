@@ -10,11 +10,13 @@ from langgraph.prebuilt import create_react_agent
 from prompts import AGENT_SYSTEM_PROMPT
 from mcp_serves import MCP_SERVERS_CONFIG
 from langchain.chat_models import init_chat_model
+from agent_db.core import AgentDB
 import json
 
 templates = Jinja2Templates(directory="templates")
 
 agent_executor = None
+agent_db = None
 config = {'configurable': {'thread_id': '1'}}
 
 class perguntaInput(BaseModel):
@@ -22,9 +24,11 @@ class perguntaInput(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent_executor
+    global agent_executor, agent_db
     try:
-        print("🚀 Inicializando agente...")
+        print("🚀 Inicializando agentes...")
+        
+        # Inicializar agente MCP
         memoria = MemorySaver()
         model = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
         mcp_client = MultiServerMCPClient(MCP_SERVERS_CONFIG)
@@ -35,10 +39,21 @@ async def lifespan(app: FastAPI):
             system_prompt=AGENT_SYSTEM_PROMPT,
             memory=memoria,
         )
-        print("✅ Agente pronto com tools:", [t.name for t in tools])
+        print("✅ Agente MCP pronto com tools:", [t.name for t in tools])
+        
+        # Inicializar agente de banco de dados
+        try:
+            agent_db = AgentDB()
+            print("✅ Agente de Banco de Dados inicializado")
+        except Exception as db_error:
+            print(f"⚠️ Agente de Banco de Dados não pôde ser inicializado: {db_error}")
+            print("⚠️ Continuando sem o agente de banco de dados...")
+            agent_db = None
+        
     except Exception as e:
-        print(f"❌ Erro ao inicializar agente: {e}")
+        print(f"❌ Erro ao inicializar agentes: {e}")
         agent_executor = None
+        agent_db = None
 
     yield  
 
@@ -61,6 +76,11 @@ async def read_agente1(request: Request):
 async def read_agente2(request: Request):
     print("Template agente2 renderizado com Sucesso")
     return templates.TemplateResponse("agente2.html", {"request": request})
+
+@app.get("/agente_db")
+async def read_agente_db(request: Request):
+    print("Template agente_db renderizado com Sucesso")
+    return templates.TemplateResponse("agente_db.html", {"request": request})
 
 @app.post("/pergunta")
 async def fazer_pergunta(pergunta: perguntaInput):
@@ -111,6 +131,55 @@ async def fazer_pergunta(pergunta: perguntaInput):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+@app.post("/pergunta_db")
+async def fazer_pergunta_db(pergunta: perguntaInput):
+    global agent_db
+    
+    async def generate():
+        try:
+            if not agent_db:
+                error_chunk = {
+                    "type": "error",
+                    "content": "Agente de banco de dados não está disponível. Verifique se o PostgreSQL está rodando e as configurações estão corretas."
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                return
+            
+            # Executar o workflow do agente de banco de dados
+            result = agent_db.run(pergunta.pergunta)
+            
+            # Simular streaming da resposta
+            response_parts = result.split('. ')
+            for i, part in enumerate(response_parts):
+                if i > 0:
+                    part = '. ' + part
+                
+                chunk = {
+                    "type": "content",
+                    "content": part
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                await asyncio.sleep(0.1)
+            
+            # Enviar sinal de fim
+            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+            
+        except Exception as e:
+            error_chunk = {
+                "type": "error",
+                "content": f"Erro: {str(e)}"
+            }
+            yield f"data: {json.dumps(error_chunk)}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
         }
     )
 

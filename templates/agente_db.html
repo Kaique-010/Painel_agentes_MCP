@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agente de Banco de Dados - Interface Interativa</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+            min-height: 100vh;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+            padding: 20px;
+        }
+
+        .chat-messages {
+            max-height: calc(100vh - 300px);
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .message.user {
+            text-align: right;
+        }
+
+        .message.ai {
+            text-align: left;
+        }
+
+        .message-bubble {
+            display: inline-block;
+            max-width: 70%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+            color: white;
+        }
+
+        .message.ai .message-bubble {
+            background: #e9ecef;
+            color: #333;
+            border: 1px solid #dee2e6;
+        }
+
+        .chat-input {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .input-group {
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-control {
+            border: none;
+            padding: 15px 20px;
+            font-size: 16px;
+        }
+
+        .form-control:focus {
+            box-shadow: none;
+            border-color: transparent;
+        }
+
+        .btn-send {
+            background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+            border: none;
+            padding: 15px 25px;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .btn-send:hover {
+            background: linear-gradient(135deg, #0f2e1a 0%, #1e3d2a 100%);
+            transform: translateY(-1px);
+        }
+
+        .btn-send:disabled {
+            background: #6c757d;
+            transform: none;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            font-style: italic;
+            color: #6c757d;
+        }
+
+        .typing-dots {
+            display: inline-block;
+        }
+
+        .typing-dots span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #6c757d;
+            margin: 0 2px;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dots span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes typing {
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+            }
+
+            40% {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #28a745;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+            }
+        }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            color: white;
+            text-decoration: none;
+        }
+
+        .examples {
+            margin-top: 15px;
+        }
+
+        .example-btn {
+            margin: 5px;
+            padding: 8px 15px;
+            background: rgba(26, 71, 42, 0.1);
+            border: 1px solid rgba(26, 71, 42, 0.3);
+            color: #1a472a;
+            border-radius: 15px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .example-btn:hover {
+            background: rgba(26, 71, 42, 0.2);
+            border-color: rgba(26, 71, 42, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+    <a href="/" class="back-button">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="chat-container">
+                    <div class="chat-header text-center">
+                        <h2>
+                            <i class="fas fa-database"></i>
+                            <span class="status-indicator"></span>
+                            Agente de Banco de Dados
+                        </h2>
+                        <p class="mb-0">Consulte informações do banco PostgreSQL usando linguagem natural</p>
+                        
+                        <div class="examples">
+                            <small class="text-light">Exemplos de consultas:</small><br>
+                            <button class="example-btn" onclick="setExample('Quantos usuários temos cadastrados?')">Quantos usuários temos?</button>
+                            <button class="example-btn" onclick="setExample('Mostre as tabelas disponíveis')">Listar tabelas</button>
+                            <button class="example-btn" onclick="setExample('Qual é a estrutura da tabela usuarios?')">Estrutura de tabela</button>
+                        </div>
+                    </div>
+
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="message ai">
+                            <div class="message-bubble">
+                                <i class="fas fa-robot"></i>
+                                Olá! Sou o Agente de Banco de Dados. Posso ajudá-lo a consultar informações do banco PostgreSQL usando linguagem natural. 
+                                
+                                Você pode me perguntar sobre:
+                                • Dados específicos das tabelas
+                                • Estrutura do banco de dados
+                                • Estatísticas e relatórios
+                                • Consultas complexas
+                                
+                                Como posso ajudá-lo hoje?
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="typing-indicator" id="typingIndicator">
+                        <div class="message ai">
+                            <div class="message-bubble">
+                                <i class="fas fa-database"></i> Consultando banco de dados
+                                <div class="typing-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-input">
+                        <form id="chatForm">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="messageInput"
+                                    placeholder="Digite sua consulta sobre o banco de dados..." required>
+                                <button class="btn btn-send" type="submit" id="sendButton">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const chatForm = document.getElementById('chatForm');
+
+        function setExample(text) {
+            messageInput.value = text;
+            messageInput.focus();
+        }
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'ai'}`;
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            
+            if (!isUser) {
+                bubbleDiv.innerHTML = `<i class="fas fa-database"></i> ${content}`;
+            } else {
+                bubbleDiv.innerHTML = `<i class="fas fa-user"></i> ${content}`;
+            }
+            
+            messageDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTyping() {
+            typingIndicator.style.display = 'block';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTyping() {
+            typingIndicator.style.display = 'none';
+        }
+
+        function setLoading(loading) {
+            sendButton.disabled = loading;
+            messageInput.disabled = loading;
+            
+            if (loading) {
+                sendButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                showTyping();
+            } else {
+                sendButton.innerHTML = '<i class="fas fa-paper-plane"></i>';
+                hideTyping();
+            }
+        }
+
+        async function sendMessage(message) {
+            if (!message.trim()) return;
+            
+            addMessage(message, true);
+            setLoading(true);
+            
+            try {
+                const response = await fetch('/pergunta_db', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ pergunta: message })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let aiResponse = '';
+                let messageAdded = false;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') {
+                                setLoading(false);
+                                return;
+                            }
+                            
+                            if (data.trim()) {
+                                aiResponse += data;
+                                
+                                if (!messageAdded) {
+                                    hideTyping();
+                                    addMessage(aiResponse);
+                                    messageAdded = true;
+                                } else {
+                                    const lastMessage = chatMessages.lastElementChild.querySelector('.message-bubble');
+                                    lastMessage.innerHTML = `<i class="fas fa-database"></i> ${aiResponse}`;
+                                }
+                                
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                hideTyping();
+                addMessage('Desculpe, ocorreu um erro ao processar sua consulta. Tente novamente.');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Função para formatar markdown básico
+        function formatMarkdown(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\n/g, '<br>')
+                .replace(/### (.*?)\n/g, '<h5>$1</h5>')
+                .replace(/## (.*?)\n/g, '<h4>$1</h4>')
+                .replace(/# (.*?)\n/g, '<h3>$1</h3>');
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (message) {
+                messageInput.value = '';
+                await sendMessage(message);
+            }
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // Focar no input quando a página carregar
+        window.addEventListener('load', () => {
+            messageInput.focus();
+        });
+    </script>
+</body>
+
+</html>
