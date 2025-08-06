@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+import os
+import sys
+
+# Configurar codificação UTF-8 explicitamente
+if sys.platform.startswith('win'):
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from typing import Annotated, TypedDict
@@ -14,10 +22,17 @@ class AgentState(TypedDict):
 class AgentDB:
     def __init__(self):
         self.cache_manager = CacheManager()
-        # Criar URI do banco se não existir
-        db_uri = f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
+        # Limpar cache expirado na inicialização
+        self.cache_manager.cleanup_expired()
+        
+        # Inicializar AgentTools
+        db_uri = config.get_database_url()
         self.agent_tools = AgentTools(db_uri)
         self.workflow = self._build_workflow()
+        
+        # Estatísticas do cache
+        stats = self.cache_manager.get_stats()
+        print(f"📊 Cache: {stats['active_entries']} entradas ativas, {stats['expired_entries']} expiradas")
     
     def _build_workflow(self):
         # Cria o grafo de estado
@@ -38,12 +53,19 @@ class AgentDB:
         workflow.add_edge("processa_pergunta", "salva_cache")
         workflow.add_edge("salva_cache", END)
         
+        print("Workflow construído com sucesso!")
+        print(workflow)
+        print("Nós:", workflow.nodes)
+        print("Arestas:", workflow.edges)
+        print("Condições:", workflow.add_conditional_edges)
+
+                
         return workflow.compile()
 
     def _checa_cache(self, state: AgentState) -> AgentState:
         pergunta = state["pergunta"]
         query_hash = self.cache_manager.get_query_cache(pergunta)
-        cache = self.cache_manager.get_cache(query_hash)
+        cache = self.cache_manager.get(query_hash)
         
         if cache:
             state["resposta"] = cache
@@ -66,9 +88,18 @@ class AgentDB:
         if not state["cache_hit"]:
             pergunta = state["pergunta"]
             resposta = state["resposta"]
+
+            # ⛔ Se a resposta for vazia, None ou inválida, não salva o cache
+            if not resposta or (isinstance(resposta, dict) and not resposta.get("dados")):
+                print("❌ Resposta vazia ou inválida. Cache não salvo.")
+                return state
+            
             query_hash = self.cache_manager.get_query_cache(pergunta)
-            self.cache_manager.set_cache(query_hash, resposta)
+            self.cache_manager.set(query_hash, pergunta, resposta)
+            print("✅ Cache salvo com sucesso.")
+        
         return state
+
     
     def run(self, pergunta: str) -> str:
         initial_state = {

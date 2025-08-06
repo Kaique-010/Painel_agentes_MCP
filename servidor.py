@@ -12,6 +12,19 @@ from mcp_serves import MCP_SERVERS_CONFIG
 from langchain.chat_models import init_chat_model
 from agent_db.core import AgentDB
 import json
+import os
+import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
+
+print("POSTGRES_HOST:", os.getenv("POSTGRES_HOST"))
+print("POSTGRES_PORT:", os.getenv("POSTGRES_PORT"))
+print("POSTGRES_USER:", os.getenv("POSTGRES_USER"))
+print("POSTGRES_PASSWORD:", os.getenv("POSTGRES_PASSWORD"))
+print("POSTGRES_DB:", os.getenv("POSTGRES_DB"))
+print("MCP_SERVERS_CONFIG:", MCP_SERVERS_CONFIG)
+
 
 templates = Jinja2Templates(directory="templates")
 
@@ -25,14 +38,21 @@ class perguntaInput(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global agent_executor, agent_db
+    print("🚀 Inicializando agentes...")
+    
+    # Inicializar agente MCP
     try:
-        print("🚀 Inicializando agentes...")
-        
-        # Inicializar agente MCP
+        print("🔄 Inicializando agente MCP...")
         memoria = MemorySaver()
         model = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
+        print("✅ Modelo LLM inicializado")
+        
         mcp_client = MultiServerMCPClient(MCP_SERVERS_CONFIG)
+        print("✅ MCP Client criado")
+        
         tools = await mcp_client.get_tools()
+        print(f"✅ Tools obtidas: {len(tools)} ferramentas")
+        
         agent_executor = create_react_agent(
             model=model,
             tools=tools,
@@ -41,18 +61,21 @@ async def lifespan(app: FastAPI):
         )
         print("✅ Agente MCP pronto com tools:", [t.name for t in tools])
         
-        # Inicializar agente de banco de dados
-        try:
-            agent_db = AgentDB()
-            print("✅ Agente de Banco de Dados inicializado")
-        except Exception as db_error:
-            print(f"⚠️ Agente de Banco de Dados não pôde ser inicializado: {db_error}")
-            print("⚠️ Continuando sem o agente de banco de dados...")
-            agent_db = None
-        
-    except Exception as e:
-        print(f"❌ Erro ao inicializar agentes: {e}")
+    except Exception as mcp_error:
+        print(f"❌ Erro ao inicializar agente MCP: {mcp_error}")
+        print(f"❌ Tipo do erro MCP: {type(mcp_error).__name__}")
+        print("⚠️ Continuando sem o agente MCP...")
         agent_executor = None
+    
+    # Inicializar agente de banco de dados
+    try:
+        print("🔄 Inicializando agente de banco de dados...")
+        agent_db = AgentDB()
+        print("✅ Agente de Banco de Dados inicializado")
+    except Exception as db_error:
+        print(f"❌ Erro ao inicializar agente de banco: {db_error}")
+        print(f"❌ Tipo do erro DB: {type(db_error).__name__}")
+        print("⚠️ Continuando sem o agente de banco de dados...")
         agent_db = None
 
     yield  
@@ -151,21 +174,58 @@ async def fazer_pergunta_db(pergunta: perguntaInput):
             # Executar o workflow do agente de banco de dados
             result = agent_db.run(pergunta.pergunta)
             
-            # Simular streaming da resposta
-            response_parts = result.split('. ')
-            for i, part in enumerate(response_parts):
-                if i > 0:
-                    part = '. ' + part
+            # Função para criar streaming mais natural
+            def create_natural_chunks(text):
+                """Divide o texto em chunks naturais para streaming"""
+                import re
                 
-                chunk = {
+                # Dividir por sentenças, mantendo pontuação
+                sentences = re.split(r'(?<=[.!?])\s+', text)
+                chunks = []
+                
+                for sentence in sentences:
+                    if len(sentence) > 100:
+                        # Para sentenças muito longas, dividir por vírgulas ou outros delimitadores
+                        sub_parts = re.split(r'(?<=[,;:])\s+', sentence)
+                        for part in sub_parts:
+                            if len(part) > 50:
+                                # Para partes ainda muito longas, dividir por palavras
+                                words = part.split(' ')
+                                current_chunk = ""
+                                for word in words:
+                                    if len(current_chunk + word) < 30:
+                                        current_chunk += word + " "
+                                    else:
+                                        if current_chunk.strip():
+                                            chunks.append(current_chunk.strip())
+                                        current_chunk = word + " "
+                                if current_chunk.strip():
+                                    chunks.append(current_chunk.strip())
+                            else:
+                                chunks.append(part)
+                    else:
+                        chunks.append(sentence)
+                
+                return [chunk.strip() for chunk in chunks if chunk.strip()]
+            
+            # Criar chunks naturais
+            chunks = create_natural_chunks(result)
+            
+            # Enviar chunks com timing variável para simular escrita humana
+            for i, chunk in enumerate(chunks):
+                # Calcular delay baseado no tamanho do chunk
+                delay = min(0.05 + len(chunk) * 0.01, 0.3)
+                
+                chunk_data = {
                     "type": "content",
-                    "content": part
+                    "content": chunk,
+                    "is_complete": False
                 }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                await asyncio.sleep(0.1)
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                await asyncio.sleep(delay)
             
             # Enviar sinal de fim
-            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+            yield f"data: {json.dumps({'type': 'end', 'is_complete': True})}\n\n"
             
         except Exception as e:
             error_chunk = {
@@ -176,10 +236,11 @@ async def fazer_pergunta_db(pergunta: perguntaInput):
     
     return StreamingResponse(
         generate(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
         }
     )
 

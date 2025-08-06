@@ -9,7 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
     <style>
         body {
-            background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+            background: linear-gradient(135deg, #0e2e19 0%, #6ae492 100%);
             min-height: 100vh;
         }
 
@@ -205,6 +205,50 @@
             text-decoration: none;
         }
 
+        .typing-cursor {
+            display: inline-block;
+            background-color: #1a472a;
+            color: #1a472a;
+            animation: blink 1s infinite;
+            font-weight: bold;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .message-bubble pre {
+            background-color: #f8f9fa !important;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            overflow-x: auto;
+        }
+
+        .message-bubble code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-bubble ul {
+            padding-left: 20px;
+        }
+
+        .message-bubble li {
+            list-style-type: disc;
+        }
+
+        .message-bubble h3, .message-bubble h4, .message-bubble h5 {
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }
+
+        .message-bubble strong {
+            font-weight: 600;
+        }
+
         .examples {
             margin-top: 15px;
         }
@@ -375,6 +419,7 @@
                 const decoder = new TextDecoder();
                 let aiResponse = '';
                 let messageAdded = false;
+                let currentMessageElement = null;
                 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -385,22 +430,67 @@
                     
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
-                            const data = line.slice(6);
-                            if (data === '[DONE]') {
-                                setLoading(false);
-                                return;
-                            }
+                            const data = line.slice(6).trim();
+                            if (!data) continue;
                             
-                            if (data.trim()) {
+                            try {
+                                const parsedData = JSON.parse(data);
+                                
+                                if (parsedData.type === 'end') {
+                                    setLoading(false);
+                                    // Aplicar formatação final
+                                    if (currentMessageElement) {
+                                        const bubble = currentMessageElement.querySelector('.message-bubble');
+                                        bubble.innerHTML = `<i class="fas fa-database"></i> ${formatMarkdown(aiResponse)}`;
+                                    }
+                                    return;
+                                }
+                                
+                                if (parsedData.type === 'content' && parsedData.content) {
+                                    // Adicionar espaço se necessário
+                                    if (aiResponse && !aiResponse.endsWith(' ') && !parsedData.content.startsWith(' ')) {
+                                        aiResponse += ' ';
+                                    }
+                                    aiResponse += parsedData.content;
+                                    
+                                    if (!messageAdded) {
+                                        hideTyping();
+                                        currentMessageElement = createTypingMessage();
+                                        messageAdded = true;
+                                    }
+                                    
+                                    // Atualizar mensagem com efeito de digitação
+                                    if (currentMessageElement) {
+                                        updateTypingMessage(currentMessageElement, aiResponse);
+                                    }
+                                    
+                                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                                }
+                                
+                                if (parsedData.type === 'error') {
+                                    hideTyping();
+                                    addMessage(`Erro: ${parsedData.content}`);
+                                    setLoading(false);
+                                    return;
+                                }
+                                
+                            } catch (parseError) {
+                                // Fallback para dados não-JSON (compatibilidade)
+                                if (data === '[DONE]') {
+                                    setLoading(false);
+                                    return;
+                                }
+                                
                                 aiResponse += data;
                                 
                                 if (!messageAdded) {
                                     hideTyping();
-                                    addMessage(aiResponse);
+                                    currentMessageElement = createTypingMessage();
                                     messageAdded = true;
-                                } else {
-                                    const lastMessage = chatMessages.lastElementChild.querySelector('.message-bubble');
-                                    lastMessage.innerHTML = `<i class="fas fa-database"></i> ${aiResponse}`;
+                                }
+                                
+                                if (currentMessageElement) {
+                                    updateTypingMessage(currentMessageElement, aiResponse);
                                 }
                                 
                                 chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -416,18 +506,62 @@
                 setLoading(false);
             }
         }
+        
+        function createTypingMessage() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ai';
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            bubbleDiv.innerHTML = '<i class="fas fa-database"></i> <span class="typing-cursor">|</span>';
+            
+            messageDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageDiv;
+        }
+        
+        function updateTypingMessage(messageElement, content) {
+            const bubble = messageElement.querySelector('.message-bubble');
+            bubble.innerHTML = `<i class="fas fa-database"></i> ${escapeHtml(content)}<span class="typing-cursor">|</span>`;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
-        // Função para formatar markdown básico
+        // Função para formatar markdown avançado
         function formatMarkdown(text) {
             return text
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-                .replace(/`(.*?)`/g, '<code>$1</code>')
+                // Headers
+                .replace(/### (.*?)(\n|$)/g, '<h5 class="text-success fw-bold mt-3 mb-2">$1</h5>')
+                .replace(/## (.*?)(\n|$)/g, '<h4 class="text-primary fw-bold mt-3 mb-2">$1</h4>')
+                .replace(/# (.*?)(\n|$)/g, '<h3 class="text-dark fw-bold mt-3 mb-2">$1</h3>')
+                
+                // Bold e Italic
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-success">$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em class="text-muted">$1</em>')
+                
+                // Code blocks
+                .replace(/```([\s\S]*?)```/g, '<pre class="bg-light p-3 rounded mt-2 mb-2"><code class="text-dark">$1</code></pre>')
+                .replace(/`(.*?)`/g, '<code class="bg-light px-2 py-1 rounded text-danger">$1</code>')
+                
+                // Listas
+                .replace(/^\*\s+(.*)$/gm, '<li class="mb-1">$1</li>')
+                .replace(/(<li.*<\/li>)/s, '<ul class="mt-2 mb-2">$1</ul>')
+                
+                // Links (se houver)
+                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary" target="_blank">$1</a>')
+                
+                // Quebras de linha
+                .replace(/\n\n/g, '<br><br>')
                 .replace(/\n/g, '<br>')
-                .replace(/### (.*?)\n/g, '<h5>$1</h5>')
-                .replace(/## (.*?)\n/g, '<h4>$1</h4>')
-                .replace(/# (.*?)\n/g, '<h3>$1</h3>');
+                
+                // Remover cursor de digitação se presente
+                .replace(/<span class="typing-cursor">\|<\/span>/g, '');
         }
 
         chatForm.addEventListener('submit', async (e) => {
